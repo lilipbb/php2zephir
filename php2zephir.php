@@ -1,5 +1,5 @@
 <?php
-namespace ZephirHelp;
+namespace Php2Zephir;
 $author='lilipbb';//插件作者名称
 $version='1.0.0';//插件版本
 const PHP_TYPE_CLASS='class';
@@ -18,12 +18,10 @@ define('EMPTYNODE','baseemptynode');
 define('PRINT_OUT',false);
 $keywords=['string','int','char','float','long','default','namespace'];
 $super=['$GLOBALS','$_SERVER','$_REQUEST','$_POST','$_GET','$_FILES','$_ENV','$_COOKIE','$_SESSION'];
-class Php2Zephir{
-    public static function ChangeDir($src,$dst,$recursion=0){
-        $root=new PhpRoot();
-        $root->LoadDir($src,$recursion);
-        $root->Save($dst);
-    }
+function ChangeDir($src,$dst,$recursion=0){
+    $root=new PhpRoot();
+    $root->LoadDir($src,$recursion);
+    $root->Save($dst);
 }
 class PhpDocHelp{
     private static $consts;
