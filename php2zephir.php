@@ -937,7 +937,7 @@ class PhpNode_Class extends PhpRoot{
                             $arr[]=$param;
                         }
                     }
-                    $this->childs[]=new PhpNode_Function('__getfunargs',$this,'return ['.implode(',',$arr).'];','public','');
+                    //$this->childs[]=new PhpNode_Function('__getfunargs',$this,'return ['.implode(',',$arr).'];','public','');
                 }
             }
             $membmes=[];
@@ -1147,7 +1147,7 @@ class PhpNode_Inline extends PhpRoot{
         $mes=preg_replace_callback('@->(\$[\w\d_]+)@',function($match){//把变量声明的重写
             return '->{'.$match[1].'}';
         },$mes);
-        if(PhpDocHelp::getVarType($mes)=='array'||preg_match('@[^\w\d_]array\(@',$mes)||preg_match('@\[(["\s\w_ ]+=>["\s\w_ ]+,?)+\]@',$mes)){//判断是否为数组
+        if(PhpDocHelp::getVarType($mes)=='array'||preg_match('@[^\w\d_]array\(@',$mes)||preg_match('@\[(.+=>.+,?)+\]@',$mes)){//判断是否为数组
             $mes = preg_replace_callback('@array[ ]*\(|\)\s*([,;])@', function ($match) {
                 if(count($match)<2)return '[';
                 return ']'.$match[1];
