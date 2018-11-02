@@ -78,7 +78,7 @@ class PhpDocHelp{
         if(ord($str[0])==239&&ord($str[1])==187&&ord($str[2])==191){//去掉utf8文件头
             $str=substr($str,3);
         }
-        $str=preg_replace('@/\*[^\'"]*?\*/@s','',$str);//替换/**/的注释内容
+        $str=preg_replace('@/\*.*?\*/@s','',$str);//替换/**/的注释内容
         $arr=preg_split('/\r\n|\n/',$str);
         $narr=[];
         self::$isphp=false;
@@ -1044,8 +1044,9 @@ class PhpNode_Inline extends PhpRoot{
             if(preg_match('@(\$[\w\d_]*)\s*=\s*&\s*(\$[\w\d_]*)@',$m,$match)){//检查引用类型 比如$a=&$b;
                 echo($match[0].'引用赋值不支持'.NEWLINE);fgets(STDIN);die;
             }
-            $m=preg_replace_callback('@^print([ (])@',function($match){//不支持print
-                 return "echo".$match[1];
+            $m=preg_replace_callback('@(.?)print([ (])@',function($match){//不支持print
+                if(preg_match('@[a-z$]@',$match[1]))return $match[0];
+                return $match[1]."echo".$match[2];
             },$m);
             $m=preg_replace_callback('@([\$\w\d_\\\>\-:]+)\*\*([\$\w\d_\\\>\-:]+)|([\d\.]+)\*\*([\d\.]+)@',function($match){//对**进行支持
                 if(count($match)>3){
@@ -1097,6 +1098,9 @@ class PhpNode_Inline extends PhpRoot{
     protected function getmes()
     {
         $mes=trim($this->text);
+        $mes=preg_replace_callback('@^echo\s*\(\s*(\".*)\);@',function($match){//echo ()去掉
+            return "echo ".$match[1].';';
+        },$mes);
         if(preg_match('@->[^\$]->@',$mes)){
             echo($this->getInfo()."    {$mes}不支持->的连锁调用".NEWLINE);
             fgets(STDIN);die;
@@ -1329,9 +1333,9 @@ class PhpNode_Condiction extends PhpRoot{
             case 'if':
             case 'elseif':
                 if(preg_match_all('@(([+-])\2\$[\w\d_]+)@',$this->args,$match)){
-                     foreach ($match[0] as $m) {
-                         $this->args=str_replace($m,substr($m,2),$this->args);
-                         $this->prepend(new PhpNode_Inline('',$this,$m.';'));
+                    foreach ($match[0] as $m) {
+                        $this->args=str_replace($m,substr($m,2),$this->args);
+                        $this->prepend(new PhpNode_Inline('',$this,$m.';'));
                     }
                 }
                 $thisfun=[];
@@ -1339,21 +1343,21 @@ class PhpNode_Condiction extends PhpRoot{
                     foreach ($match[0] as $m) {
                         $this->args=str_replace($m,substr($m,0,-2),$this->args);
                         $this->continue.=(new PhpNode_Inline('',$this,$m.';'))->getmes();
-                        $thisfun[]=function($obj,$m){$this->append(new PhpNode_Inline('',$this,$m.';'));};
+                        $thisfun[]=function($obj,$m){$this->prepend(new PhpNode_Inline('',$this,$m.';'));};
                     }
-                 ;}
-                 if($this->name=='if'||$this->name=='elseif'||$this->name=='else'){$this->continue='';}
-                 else{
-                     if($this->continue=='')$this->continue=';';
-                     if($this->name=='while')
-                         $this->prepend(new PhpNode_Condiction('if',$this,'break;','!('.$this->args.')'));
-                     else $this->append(new PhpNode_Condiction('if',$this,'break;','!('.$this->args.')'));
-                     foreach ($thisfun as $item) {
-                         $item($this,$m);
-                     }
-                     $this->text='';
-                     $this->name='loop';$this->args='';
-                 }
+                    ;}
+                if($this->name=='if'||$this->name=='elseif'||$this->name=='else'){$this->continue='';}
+                else{
+                    if($this->continue=='')$this->continue=';';
+                    if($this->name=='while')
+                        $this->prepend(new PhpNode_Condiction('if',$this,'break;','!('.$this->args.')'));
+                    else $this->append(new PhpNode_Condiction('if',$this,'break;','!('.$this->args.')'));
+                    foreach ($thisfun as $item) {
+                        $item($this,$m);
+                    }
+                    $this->text='';
+                    $this->name='loop';$this->args='';
+                }
                 break;
             case 'foreach':
                 $this->args=preg_replace_callback('@\$this as@',function($match){
@@ -1367,7 +1371,7 @@ class PhpNode_Condiction extends PhpRoot{
                     if($var!='') $this->getparentfun()->insertTempValue($var,'var');
                 }
                 $this->name="for ".implode(',',$vars).' in ';
-               break;
+                break;
         }
 
     }
@@ -1448,31 +1452,31 @@ class PhpNode_Function extends PhpRoot{
                     }
                     if($match[2]==$name){
                         $arr=PhpDocHelp::splitArgs($match[3]);
-                       if(count($arr)==count($parameters)){
-                           $ok=true;
-                           for($i=0;$i<count($parameters);$i++){
-                               if(in_array($i,$this->refindex)){
-                                     if(trim($arr[$i])!=trim($parameters[$i])){
-                                         $ok=false;
-                                     }
-                                     $arr[$i]=REFTEMPOBJ;
-                               }
-                           }
-                           if($ok)
-                           return $match[1].$match[2].'('.implode(',',$arr).');';
-                       }
-                       echo($this->getInfo().'递归时如果使用引用参数不能更改递归时的变量!'.NEWLINE);fgets(STDIN); die;
+                        if(count($arr)==count($parameters)){
+                            $ok=true;
+                            for($i=0;$i<count($parameters);$i++){
+                                if(in_array($i,$this->refindex)){
+                                    if(trim($arr[$i])!=trim($parameters[$i])){
+                                        $ok=false;
+                                    }
+                                    $arr[$i]=REFTEMPOBJ;
+                                }
+                            }
+                            if($ok)
+                                return $match[1].$match[2].'('.implode(',',$arr).');';
+                        }
+                        echo($this->getInfo().'递归时如果使用引用参数不能更改递归时的变量!'.NEWLINE);fgets(STDIN); die;
                     }
                     return $match[0];
                 },$text);
                 $text=preg_replace_callback('@(.?)(\$[\w\d_]+)@',function($match){
-                   if($match[1]!=':')
-                   for($i=0;$i<count($this->parameters);$i++){
-                       $pname=explode('=',$this->parameters[$i])[0];
-                       if($match[2]==$pname&&in_array($i,$this->refindex))
-                           return $match[1].REFTEMPOBJ.'->'.substr($match[2],1);
-                   }
-                   return $match[0];
+                    if($match[1]!=':')
+                        for($i=0;$i<count($this->parameters);$i++){
+                            $pname=explode('=',$this->parameters[$i])[0];
+                            if($match[2]==$pname&&in_array($i,$this->refindex))
+                                return $match[1].REFTEMPOBJ.'->'.substr($match[2],1);
+                        }
+                    return $match[0];
                 },$text);
                 $this->name='ref__'.$this->name;
                 $this->parameters=$newparames;
@@ -1481,13 +1485,13 @@ class PhpNode_Function extends PhpRoot{
         }
         global $keywords;
         if($this->parameters)
-        foreach($this->parameters as $p){
-            preg_match('@\$([\w_]+)@',$p,$m);
-            $p=$m[1];
-            if(in_array($p,$keywords)){
-                echo($this->getInfo()."中的\${$p}方法变量不能用$+关键字命名");fgets(STDIN);die;
+            foreach($this->parameters as $p){
+                preg_match('@\$([\w_]+)@',$p,$m);
+                $p=$m[1];
+                if(in_array($p,$keywords)){
+                    echo($this->getInfo()."中的\${$p}方法变量不能用$+关键字命名");fgets(STDIN);die;
+                }
             }
-        }
         $this->modifier = trim($modifier);
         if($this->level==3&&$this->modifier=='')$this->modifier='public';
         $this->staticargs=[];
@@ -1513,27 +1517,33 @@ class PhpNode_Function extends PhpRoot{
                 $index = PhpDocHelp::splitIndex($text, ';', '}');
             } else
                 $index = PhpDocHelp::splitIndex($text, ';');
-             $block = trim(substr($text, 0, $index));
-             $text = substr($text, $index);
+            $block = trim(substr($text, 0, $index));
+            $text = substr($text, $index);
             if(count($this->inlinefunnames)>0){
-                 $block=preg_replace_callback('@(\$?[\w_]+)\s*\((.*)\)\s*;@',function($match)use(&$text){//对方法内直接声明的方法名称变化
+                $block=preg_replace_callback('@(\$[\w_]+)\s*\((.*)\)@',function($match)use(&$text){//对方法内直接声明的方法名称变化
                     if (key_exists($match[1], $this->inlinefunnames)) {
-                        $nmes=$this->inlinefunnames[$match[1]];
-                        $match[2]=trim($match[2]);
-                        $nmes=preg_replace('@%1@',$match[2],$nmes);
-                        if(strpos($nmes,'%2')!==false){
-                            $name=substr($nmes,0,strpos($nmes,'('));
-                            preg_replace_callback('@&?\$([\w_]+)@',function($match)use(&$arr,&$nmes,$name,&$text){
-                                if($match[0][0]=='&'){
-                                    $match[0]=substr($match[0],1);
-                                    $text=$match[0].'='.$name.'->'.$match[1].';'.NEWLINE.$text;
-                                }
-                                $this->childs[]=new PhpNode_Inline('',$this,$name.'->'.$match[1].'='.$match[0].';');
-                            },explode('%2',$nmes)[1]);
-                            $nmes=preg_replace('@%2[^\)]+@',$match[2],$nmes).';'.NEWLINE;
-                        }
-                        else $nmes.=';';
-                        return $nmes ;
+                        $index=PhpDocHelp::splitIndex($match[0],')');
+                        $mes1=substr($match[0],0,$index);
+                        $mes2=substr($match[0],$index);
+                        $mes1=preg_replace_callback('@(\$[\w_]+)\s*\((.*)\)@',function($match)use(&$text){
+                            $nmes=$this->inlinefunnames[$match[1]];
+                            $match[2]=trim( $match[2]);
+                            $nmes=preg_replace('@%1@',$match[2],$nmes);
+                            if(strpos($nmes,'%2')!==false){
+                                $name=substr($nmes,0,strpos($nmes,'('));
+                                preg_replace_callback('@&?\$([\w_]+)@',function($match)use(&$arr,&$nmes,$name,&$text){
+                                    if($match[0][0]=='&'){
+                                        $match[0]=substr($match[0],1);
+                                        $text=$match[0].'='.$name.'->'.$match[1].';'.NEWLINE.$text;
+                                    }
+                                    $this->childs[]=new PhpNode_Inline('',$this,$name.'->'.$match[1].'='.$match[0].';');
+                                },explode('%2',$nmes)[1]);
+                                $nmes=preg_replace('@%2[^\)]+@',$match[2],$nmes);
+                            }
+                            else $nmes.='';
+                            return $nmes ;
+                        },$mes1);
+                        return $mes1.$mes2;
                     }
                     return $match[0];
                 },$block);
@@ -1542,20 +1552,20 @@ class PhpNode_Function extends PhpRoot{
                 $this->childs[] = new PhpNode_Condiction(EMPTYNODE, $this, $block, '');
             }
             else if(preg_match('@^try\s*\{(.*)\}\s*catch\s*\((.*?)\)\s*(\{.*)@is',$block,$match)) {//匹配try catch方法
-                 $houindex = PhpDocHelp::splitIndex($match[3], '}');
-                 $catchmes = substr($match[3], 0, $houindex);
-                 $catchmes=substr(trim($catchmes),1,-1);
-                 $shenyumes=trim(substr($match[3],$houindex));
-                 $finallymes='';
-                 if(substr($shenyumes,0,7)=='finally'){
-                     $houindex = PhpDocHelp::splitIndex($shenyumes, '}');
-                     $finallymes = substr($shenyumes, 0, $houindex);
-                     $finallymes=preg_replace('@^finally\s*\{(.*)\}@s','\1',$finallymes);
-                     $shenyumes=trim(substr($shenyumes,$houindex));
-                 }
-                 $this->childs[] = new PhpNode_TryCatch('try', $this, $match[1], $match[2], $catchmes,$finallymes);
-                 $text =$shenyumes.$text;
-             }
+                $houindex = PhpDocHelp::splitIndex($match[3], '}');
+                $catchmes = substr($match[3], 0, $houindex);
+                $catchmes=substr(trim($catchmes),1,-1);
+                $shenyumes=trim(substr($match[3],$houindex));
+                $finallymes='';
+                if(substr($shenyumes,0,7)=='finally'){
+                    $houindex = PhpDocHelp::splitIndex($shenyumes, '}');
+                    $finallymes = substr($shenyumes, 0, $houindex);
+                    $finallymes=preg_replace('@^finally\s*\{(.*)\}@s','\1',$finallymes);
+                    $shenyumes=trim(substr($shenyumes,$houindex));
+                }
+                $this->childs[] = new PhpNode_TryCatch('try', $this, $match[1], $match[2], $catchmes,$finallymes);
+                $text =$shenyumes.$text;
+            }
             else if(preg_match('@(^\$[\w\d_]+\s*=)?\s*\(?\s*\((.*)\)\(([^{]*)\)\s*;@s',$block,$match)&&strpos($block,'function')!==false){//匹配匿名方法调用
                 echo($this->getparentclass()->name."类".$this->name."方法中，不支持匿名方法直接调用。".NEWLINE.$block.NEWLINE);
                 fgets(STDIN);die;
@@ -1579,7 +1589,9 @@ class PhpNode_Function extends PhpRoot{
                         $nargs[]=$arg;
                     }
                 }
-                if(count($nargs)>1)$use='%2'.$nargs[1];else $use='%1';
+                if(count($nargs)>1)$use='%2'.$nargs[1];
+                else if(count($nargs)==1&&count($args)>1) $use='%1'.$nargs[0];
+                else $use='%1';
                 foreach ($funname as $item) {
                     $this->inlinefunnames[$item]='$'.$match[1]."({$use})";
                 }
@@ -1606,18 +1618,18 @@ class PhpNode_Function extends PhpRoot{
                         $oldpar=str_replace('&','',$allarr[$i]);
                         $oldpar=explode('=',$oldpar)[0];
                         if(in_array($allarr[$i],$funarr))
-                        $fuzhi.="if($oldpar!=null){\$this->".substr($oldpar,1)."=".$oldpar.';}'.NEWLINE;
+                            $fuzhi.="if($oldpar!=null){\$this->".substr($oldpar,1)."=".$oldpar.';}'.NEWLINE;
                         $match[2]=preg_replace_callback('@(.?)\\'.$oldpar.'([^\w\d_])@',function($m)use($i,$oldpar){
-                             if($m[1]==':')return $m[0];
-                             return $m[1]."\$this->".substr($oldpar,1).$m[2];
+                            if($m[1]==':')return $m[0];
+                            return $m[1]."\$this->".substr($oldpar,1).$m[2];
                         },$match[2]);
                     }
                 }
                 $membermes='';
                 if(isset($allarr))
-                foreach ($allarr as $item) {
-                    $membermes.='public '.str_replace('&','',$item).';'.NEWLINE;
-                }
+                    foreach ($allarr as $item) {
+                        $membermes.='public '.str_replace('&','',$item).';'.NEWLINE;
+                    }
                 if(trim($nargs[0])!=''){$nargs[1]=','.str_replace('&','',$nargs[1]);}else $nargs[1]='';
                 if(trim($nargs[1]==','))$nargs[1]='';
                 $firstarg=($this->getparentfun()->isStatic()?'null':'$this');
@@ -1683,15 +1695,15 @@ ETO;
                     }
                 }
                 else if(preg_match('@^([^=]*\$[\w\d_]+\s*=)?(\s*[\$:\->\w\d_\\\]+)\s*\((.*)(function\s*\(.*)\);@s',$block,$match)){//方法参数为匿名函数
-                     $fun=PhpDocHelp::splitIndex($match[4],'}');
-                     $fun=substr($match[4],0,$fun);
-                     $funname='$inline_f'.PhpDocHelp::getid();
-                     $match[0]=str_replace($fun,$funname,$match[0]);
-                     $refmes='';
-                     preg_replace_callback('@&\$([\w\d_]+)@',function($m)use(&$refmes,$funname){
-                          $refmes.="\${$m[1]}={$funname}->{$m[1]};";
-                     },$fun);
-                     $text=$funname.'='.$fun.';'.NEWLINE.$match[0].$refmes.$text;
+                    $fun=PhpDocHelp::splitIndex($match[4],'}');
+                    $fun=substr($match[4],0,$fun);
+                    $funname='$inline_f'.PhpDocHelp::getid();
+                    $match[0]=str_replace($fun,$funname,$match[0]);
+                    $refmes='';
+                    preg_replace_callback('@&\$([\w\d_]+)@',function($m)use(&$refmes,$funname){
+                        $refmes.="\${$m[1]}={$funname}->{$m[1]};";
+                    },$fun);
+                    $text=$funname.'='.$fun.';'.NEWLINE.$match[0].$refmes.$text;
                 }
                 else {
                     $this->childs[] = new PhpNode_Inline('', $this, $block);
@@ -1804,19 +1816,20 @@ ETO;
 
     protected function getfinalparam(){
         $parameters=$this->parameters;
-       if($parameters!=null){
-               for($i=0;$i<count($parameters);$i++){
-                   if(key_exists($i,$this->strongtype)){
-                       if(in_array($this->strongtype[$i],self::canusetypes))
-                           $parameters[$i]=$this->strongtype[$i].' '.$parameters[$i];
-                   }
-                   else if($this->argstype!=null&&$i<count($this->argstype)){
-                       if(in_array($this->argstype[$i],self::canusetypes))
-                           $parameters[$i]=$this->argstype[$i].' '.$parameters[$i];
-                   }
-           }
-       $mes=implode(',',$parameters);
-       return $mes;
+        if($parameters!=null){
+            $isRef=substr($this->name,0,5)=="ref__";
+            for($i=0;$i<count($parameters);$i++){
+                if(key_exists($i,$this->strongtype)){
+                    if(in_array($this->strongtype[$i],self::canusetypes))
+                        $parameters[$i]=($isRef?"var":$this->strongtype[$i]).' '.$parameters[$i];
+                }
+                else if($this->argstype!=null&&$i<count($this->argstype)){
+                    if(in_array($this->argstype[$i],self::canusetypes))
+                        $parameters[$i]=($isRef?"var":$this->argstype[$i]).' '.$parameters[$i];
+                }
+            }
+            $mes=implode(',',$parameters);
+            return $mes;
         }
     }
     protected function getmes()
