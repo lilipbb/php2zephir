@@ -49,7 +49,7 @@ class PhpDocHelp{
 //                }
 //                return $match[0];
 //            },$mes);
-            $mes=preg_replace_callback('@([\w\d_]+)\s*(\[.+?\])@',function($match){//常量[]进行转换
+            $mes=preg_replace_callback('@([\w\d_]+)\s*(\[.+?\])@',function($match){//常量[]进行转换 
                 if(key_exists($match[1],self::$consts)) {
                     return "constant(\"$match[1]\")".$match[2];
                 }
